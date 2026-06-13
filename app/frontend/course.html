@@ -1,14 +1,18 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Your Course - AI Course Creator</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Merriweather:wght@300;400;700&display=swap" rel="stylesheet">
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Merriweather:wght@300;400;700&display=swap"
+        rel="stylesheet">
     <link rel="stylesheet" href="style.css">
 </head>
+
 <body class="course-page">
     <div class="course-container">
         <header class="course-header">
@@ -28,6 +32,11 @@
                 <article id="course-content" class="course-content">
                     <div class="loading-course">Loading your course...</div>
                 </article>
+                <div class="quiz-section">
+                    <h2>Test Your Knowledge</h2>
+                    <button id="take-quiz-btn" class="quiz-btn">Take the Quiz</button>
+                    <p>Try out a quiz based on the course content you just created!</p>
+                </div>
             </main>
         </div>
     </div>
@@ -73,6 +82,10 @@
                 });
             }
         });
+        document.getElementById('take-quiz-btn').addEventListener('click', () => {
+            window.location.href = '/quiz.html';
+        });
     </script>
 </body>
+
 </html>
