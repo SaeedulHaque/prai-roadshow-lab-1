@@ -142,6 +142,13 @@ async def query_adk_sever(
                 event = server_event.json()
                 yield event
 
+class QuizRequest(BaseModel):
+    course_content: str
+
+class AssessRequest(BaseModel):
+    questions: list
+    answers: list
+
 class SimpleChatRequest(BaseModel):
     message: str
     user_id: str = "test_user"
@@ -197,6 +204,71 @@ async def chat_stream(request: SimpleChatRequest):
         yield json.dumps({"type": "result", "text": final_text.strip()}) + "\n"
 
     return StreamingResponse(event_generator(), media_type="application/x-ndjson")
+
+async def _run_agent_and_collect_text(origin: str, app_name: str, message: str) -> str:
+    """Creates a session, runs an agent via SSE, and collects all text output."""
+    httpx_client = await get_client(origin)
+    session_resp = await httpx_client.post(
+        f"{origin}/apps/{app_name}/users/quiz_user/sessions",
+        headers=[("Content-Type", "application/json")]
+    )
+    session_resp.raise_for_status()
+    session_id = session_resp.json()["id"]
+
+    request_body = {
+        "appName": app_name,
+        "userId": "quiz_user",
+        "sessionId": session_id,
+        "newMessage": {"role": "user", "parts": [{"text": message}]},
+        "streaming": False
+    }
+    full_text = ""
+    async with aconnect_sse(httpx_client, "POST", f"{origin}/run_sse", json=request_body) as es:
+        if es.response.is_error:
+            raise RuntimeError(f"Agent {app_name} returned {es.response.status_code}")
+        async for ev in es.aiter_sse():
+            event = ev.json()
+            if "content" in event and event["content"]:
+                content = genai_types.Content.model_validate(event["content"])
+                for part in content.parts or []:
+                    if part.text:
+                        full_text += part.text
+    return full_text
+
+
+@app.post("/api/create_quiz")
+async def create_quiz(request: QuizRequest):
+    quizzer_url = os.getenv("QUIZZER_AGENT_CARD_URL", "http://localhost:8005/a2a/agent/.well-known/agent-card.json")
+    quizzer_origin = quizzer_url.split("/a2a/")[0]
+    full_text = await _run_agent_and_collect_text(
+        quizzer_origin, "quizzer",
+        f"Generate a quiz from this course content:\n\n{request.course_content}"
+    )
+    start = full_text.find("{")
+    end = full_text.rfind("}") + 1
+    if start != -1 and end > start:
+        return json.loads(full_text[start:end])
+    return {"questions": []}
+
+
+@app.post("/api/assess_quiz")
+async def assess_quiz(request: AssessRequest):
+    assessor_url = os.getenv("ASSESSOR_AGENT_CARD_URL", "http://localhost:8006/a2a/agent/.well-known/agent-card.json")
+    assessor_origin = assessor_url.split("/a2a/")[0]
+    qa_text = "\n".join(
+        f"Q{i+1}: {q['question']}\nCorrect: {q['correct']}\nUser answered: {request.answers[i] if i < len(request.answers) else 'Not answered'}"
+        for i, q in enumerate(request.questions)
+    )
+    full_text = await _run_agent_and_collect_text(
+        assessor_origin, "assessor",
+        f"Please assess these quiz answers:\n\n{qa_text}"
+    )
+    start = full_text.find("{")
+    end = full_text.rfind("}") + 1
+    if start != -1 and end > start:
+        return json.loads(full_text[start:end])
+    return {"score": 0, "total": len(request.questions), "percentage": 0, "grade": "F", "feedback": "Could not assess.", "correct_answers": []}
+
 
 # Mount frontend from the copied location
 frontend_path = os.path.join(os.path.dirname(__file__), "frontend")

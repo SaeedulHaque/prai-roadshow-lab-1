@@ -2,7 +2,7 @@
 
 # Kill any existing processes on these ports
 echo "Stopping any existing processes on ports 8000-8004..."
-lsof -ti:8000,8001,8002,8003,8004 | xargs kill -9 2>/dev/null
+lsof -ti:8000,8001,8002,8003,8004,8005,8006 | xargs kill -9 2>/dev/null
 
 # Set common environment variables for local development
 export GOOGLE_CLOUD_PROJECT=$(gcloud config get-value project)
@@ -28,9 +28,23 @@ uv run adk_app.py --host 0.0.0.0 --port 8003 --a2a . &
 CONTENT_BUILDER_PID=$!
 popd
 
+echo "Starting Quizzer Agent on port 8005..."
+pushd agents/quizzer
+uv run adk_app.py --host 0.0.0.0 --port 8005 --a2a . &
+QUIZZER_PID=$!
+popd
+
+echo "Starting Assessor Agent on port 8006..."
+pushd agents/assessor
+uv run adk_app.py --host 0.0.0.0 --port 8006 --a2a . &
+ASSESSOR_PID=$!
+popd
+
 export RESEARCHER_AGENT_CARD_URL=http://localhost:8001/a2a/agent/.well-known/agent-card.json
 export JUDGE_AGENT_CARD_URL=http://localhost:8002/a2a/agent/.well-known/agent-card.json
 export CONTENT_BUILDER_AGENT_CARD_URL=http://localhost:8003/a2a/agent/.well-known/agent-card.json
+export QUIZZER_AGENT_CARD_URL=http://localhost:8005/a2a/agent/.well-known/agent-card.json
+export ASSESSOR_AGENT_CARD_URL=http://localhost:8006/a2a/agent/.well-known/agent-card.json
 
 echo "Starting Orchestrator Agent on port 8004..."
 pushd agents/orchestrator
@@ -44,6 +58,8 @@ sleep 5
 echo "Starting Orchestrator Agent on port 8000..."
 pushd app
 export AGENT_SERVER_URL=http://localhost:8004
+export QUIZZER_AGENT_CARD_URL=http://localhost:8005/a2a/agent/.well-known/agent-card.json
+export ASSESSOR_AGENT_CARD_URL=http://localhost:8006/a2a/agent/.well-known/agent-card.json
 
 uv run uvicorn main:app --host 0.0.0.0 --port 8000 &
 BACKEND_PID=$!
@@ -59,5 +75,5 @@ echo ""
 echo "Press Ctrl+C to stop all agents."
 
 # Wait for all processes
-trap "kill $RESEARCHER_PID $JUDGE_PID $CONTENT_BUILDER_PID $ORCHESTRATOR_PID $BACKEND_PID; exit" INT
+trap "kill $RESEARCHER_PID $JUDGE_PID $CONTENT_BUILDER_PID $ORCHESTRATOR_PID $BACKEND_PID $QUIZZER_PID $ASSESSOR_PID; exit" INT
 wait
